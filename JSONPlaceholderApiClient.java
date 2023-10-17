@@ -1,8 +1,36 @@
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.annotations.SerializedName;
+
 
 public class JSONPlaceholderApiClient {
+
+    public class Task {
+        private int userId;
+        private int id;
+        private String title;
+        private boolean completed;
+
+        public int getUserId() {
+            return userId;
+        }
+
+        public int getId() {
+            return id;
+        }
+
+        public String getTitle() {
+            return title;
+        }
+
+        public boolean isCompleted() {
+            return completed;
+        }
+    }
 
     private static final String BASE_URL = "https://jsonplaceholder.typicode.com/users";
 
@@ -26,11 +54,23 @@ public class JSONPlaceholderApiClient {
             getUserById(userIdToFetch);
 
 
+
             String usernameToFetch = "username";
             getUserByUsername(usernameToFetch);
+            int userIdToFetch2 = 2;
+            getUserById(userIdToFetch2);
+
+            int postIdToFetch = getLastPostIdByUser(userIdToFetch2);
+            if (postIdToFetch > 0) {
+                getAndWriteCommentsForPost(userIdToFetch2, postIdToFetch);
+            }
+            int userIdForOpenTasks = 1;
+            printOpenTasksForUser(userIdForOpenTasks);
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+
     }
 
     private static void createUser(String newUserJson) throws IOException {
@@ -145,5 +185,77 @@ public class JSONPlaceholderApiClient {
             }
             return response.toString();
         }
+    }
+    private static int getLastPostIdByUser(int userId) throws IOException {
+        String userPostsUrl = BASE_URL + "/" + userId + "/posts";
+        HttpURLConnection connection = createConnection(userPostsUrl, "GET");
+        int responseCode = connection.getResponseCode();
+
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            String response = readResponse(connection);
+            JsonArray userPosts = new Gson().fromJson(response, JsonArray.class);
+
+
+            int lastPostId = 0;
+            for (int i = 0; i < userPosts.size(); i++) {
+                JsonObject post = userPosts.get(i).getAsJsonObject();
+                int postId = post.get("id").getAsInt();
+                if (postId > lastPostId) {
+                    lastPostId = postId;
+                }
+            }
+
+            connection.disconnect();
+            return lastPostId;
+        } else {
+            System.out.println("Failed to get user posts. Response code: " + responseCode);
+            connection.disconnect();
+            return 0;
+        }
+    }
+    private static void getAndWriteCommentsForPost(int userId, int postId) throws IOException {
+        String postCommentsUrl = "https://jsonplaceholder.typicode.com/posts/" + postId + "/comments";
+        HttpURLConnection connection = createConnection(postCommentsUrl, "GET");
+        int responseCode = connection.getResponseCode();
+
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            String response = readResponse(connection);
+
+            String fileName = "user-" + userId + "-post-" + postId + "-comments.json";
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(fileName))) {
+                writer.write(response);
+            }
+
+            System.out.println("Comments for User " + userId + " - Post " + postId + " written to " + fileName);
+        } else {
+            System.out.println("Failed to get comments. Response code: " + responseCode);
+        }
+
+        connection.disconnect();
+    }
+    private static void printOpenTasksForUser(int userId) throws IOException {
+        String userTasksUrl = BASE_URL + "/" + userId + "/todos";
+        HttpURLConnection connection = createConnection(userTasksUrl, "GET");
+        int responseCode = connection.getResponseCode();
+
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            String response = readResponse(connection);
+            JsonArray tasks = new Gson().fromJson(response, JsonArray.class);
+
+            System.out.println("Open tasks for User " + userId + ":");
+            for (int i = 0; i < tasks.size(); i++) {
+                JsonObject task = tasks.get(i).getAsJsonObject();
+                boolean completed = task.get("completed").getAsBoolean();
+                if (!completed) {
+                    int taskId = task.get("id").getAsInt();
+                    String title = task.get("title").getAsString();
+                    System.out.println("Task ID: " + taskId + ", Title: " + title);
+                }
+            }
+        } else {
+            System.out.println("Failed to get user tasks. Response code: " + responseCode);
+        }
+
+        connection.disconnect();
     }
 }
